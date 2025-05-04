@@ -45,11 +45,11 @@ const App = () => {
     {/* 註冊/登入選項 */}
     <div className="fixed top-4 right-4 z-50">
     <a
-      href="https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=你的ChannelID&redirect_uri=你的RedirectURI&state=abc123&scope=profile%20openid&bot_prompt=normal"
+      href="https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=2007364290&redirect_uri=http://localhost:5173/&state=xyz123&scope=profile%20openid&bot_prompt=normal"
       className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
     >
-        使用 LINE 註冊/登入
-      </a>
+      使用 LINE 註冊／登入
+    </a>
     </div>
 
       {/* 建築主體 */}
