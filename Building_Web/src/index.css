@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 自訂全域樣式可寫在這邊 */
+html, body {
+  @apply w-full h-full m-0 p-0 bg-[#f9f6ee]; /* 淺奶油底色，可依喜好調整 */
+  font-family: 'sans-serif';
+}
