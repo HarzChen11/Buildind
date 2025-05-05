@@ -1,0 +1,4 @@
+Secrets/*.json
+.env
+/go.mod
+/go.sum
