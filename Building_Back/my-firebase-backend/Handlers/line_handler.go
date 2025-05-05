@@ -1,4 +1,3 @@
-// handlers/line_handler.go
 package handlers
 
 import (
@@ -6,6 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/MicahParks/keyfunc"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 const (
@@ -25,6 +28,33 @@ type ProfileResponse struct {
 	PictureURL  string `json:"pictureUrl"`
 }
 
+// ✅ 驗證 LINE id_token（JWT）
+func ParseAndValidateLineIDToken(idToken string) (jwt.MapClaims, error) {
+	jwksURL := "https://api.line.me/oauth2/v2.1/certs"
+
+	jwks, err := keyfunc.Get(jwksURL, keyfunc.Options{
+		RefreshTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("取得 LINE JWK 失敗: %w", err)
+	}
+
+	token, err := jwt.Parse(idToken, jwks.Keyfunc)
+	if err != nil {
+		return nil, fmt.Errorf("JWT 驗證失敗: %w", err)
+	}
+	if !token.Valid {
+		return nil, fmt.Errorf("JWT 無效")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, fmt.Errorf("JWT claims 格式錯誤")
+	}
+	return claims, nil
+}
+
+// ✅ 主 handler
 func HandleLineCallback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -35,10 +65,9 @@ func HandleLineCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error": "缺少 code"}`, http.StatusBadRequest)
 		return
 	}
-
 	code := body.Code
 
-	// Step 1: 拿 access token
+	// Step 1：交換 token
 	tokenURL := "https://api.line.me/oauth2/v2.1/token"
 	data := fmt.Sprintf(
 		"grant_type=authorization_code&code=%s&redirect_uri=%s&client_id=%s&client_secret=%s",
@@ -60,7 +89,15 @@ func HandleLineCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 2: 用 access_token 拿 profile
+	// Step 2：驗證 id_token（JWT）
+	// _, err = ParseAndValidateLineIDToken(tokenRes.IDToken)
+	// if err != nil {
+	// 	fmt.Println("JWT 驗證錯誤：", err)
+	// 	http.Error(w, fmt.Sprintf(`{"error": "id_token 驗證失敗: %v"}`, err), http.StatusUnauthorized)
+	// 	return
+	// }
+
+	// Step 3：取得 LINE profile（含頭像）
 	profileReq, _ := http.NewRequest("GET", "https://api.line.me/v2/profile", nil)
 	profileReq.Header.Set("Authorization", "Bearer "+tokenRes.AccessToken)
 
@@ -77,16 +114,15 @@ func HandleLineCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("✅ 取得 LINE 使用者資料: %v\n", profile)
+	fmt.Printf("✅ 取得使用者資料: %+v\n", profile)
 
-	// Step 3: 嘗試註冊
-	CreateUser(profile.UserID, profile.DisplayName)
+	// Step 4：嘗試註冊 Firestore
+	CreateUser(profile.UserID, profile.DisplayName, profile.PictureURL)
 
-	// ✅ 回傳 JSON 給前端
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK) // 確保是 200 OK
+	// Step 5：回傳給前端
 	json.NewEncoder(w).Encode(map[string]string{
 		"userId": profile.UserID,
 		"name":   profile.DisplayName,
+		"avatar": profile.PictureURL,
 	})
 }

@@ -13,15 +13,35 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func CreateUser(userId string, displayName string) {
+func CreateUser(userId string, displayName string, avatar string) {
 	docRef := firebase.FirestoreClient.Collection("Users").Doc(userId)
 	_, err := docRef.Get(context.Background())
 
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
-			// 流水號處理
+
 			counterRef := firebase.FirestoreClient.Collection("Meta").Doc("UserCounter")
+
 			err := firebase.FirestoreClient.RunTransaction(context.Background(), func(ctx context.Context, tx *firestore.Transaction) error {
+				// 1️⃣ 查詢目前最大樓層
+				usersIter := firebase.FirestoreClient.Collection("Users").Documents(ctx)
+				defer usersIter.Stop()
+
+				maxFloor := 100 // 初始最大樓層，您可以根據需求設置初值
+				for {
+					doc, err := usersIter.Next()
+					if err != nil {
+						break
+					}
+					if floor, ok := doc.Data()["cFloor"].(int64); ok {
+						if int(floor) > maxFloor {
+							maxFloor = int(floor)
+						}
+					}
+				}
+				newFloor := maxFloor + 1
+
+				// 2️⃣ 查詢 lastUserId
 				counterDoc, err := tx.Get(counterRef)
 				if err != nil && status.Code(err) != codes.NotFound {
 					return err
@@ -36,17 +56,17 @@ func CreateUser(userId string, displayName string) {
 				}
 				newID := lastID + 1
 
-				// 更新 counter
-				tx.Set(counterRef, map[string]interface{}{
-					"lastUserId": newID,
-				}, firestore.MergeAll)
+				// 3️⃣ 更新 lastUserId 和用戶資料
+				tx.Update(counterRef, []firestore.Update{
+					{Path: "lastUserId", Value: firestore.Increment(1)}, // 增加 1
+				})
 
-				// 寫入新用戶
+				// 註冊新用戶
 				tx.Set(docRef, map[string]interface{}{
 					"cID":       newID,
 					"cName":     displayName,
-					"cAvatar":   "🧍",
-					"cFloor":    101,
+					"cAvatar":   avatar,
+					"cFloor":    newFloor,
 					"cCreateDT": time.Now(),
 				}, firestore.MergeAll)
 
@@ -54,9 +74,10 @@ func CreateUser(userId string, displayName string) {
 			})
 
 			if err != nil {
-				log.Fatalf("註冊失敗: %v", err)
+				log.Fatalf("❌ 註冊失敗: %v", err)
 			}
 			fmt.Println("✅ 成功註冊新用戶")
+
 		} else {
 			log.Fatalf("❌ 讀取資料錯誤: %v", err)
 		}

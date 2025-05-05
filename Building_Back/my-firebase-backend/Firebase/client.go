@@ -14,7 +14,7 @@ var FirestoreClient *firestore.Client
 
 func InitFirebase() {
 	_ = godotenv.Load()
-	opt := option.WithCredentialsFile("/Users/harz/Desktop/Buildind/buildind-fab23-firebase-adminsdk-fbsvc-9e2a0009ec.json")
+	opt := option.WithCredentialsFile("/Users/harz/Desktop/Buildind/Building_Back/my-firebase-backend/Secrets/buildind-fab23-firebase-adminsdk-fbsvc-9e2a0009ec.json")
 	app, err := firebase.NewApp(context.Background(), &firebase.Config{
 		ProjectID: "buildind-fab23",
 	}, opt)

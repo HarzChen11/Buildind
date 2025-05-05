@@ -1,35 +1,46 @@
 import React from "react";
 
 const BuildingDecoration = () => {
+  const leftTrees = 10;
+  const centerTrees = 11;
+  const rightTrees = 10;
+
+  const generateTree = (index: number, position: "left" | "center" | "right") => {
+    const size = Math.floor(Math.random() * 20) + 40;
+    const top = Math.floor(Math.random() * 20);
+
+    let style: React.CSSProperties = {
+      width: `${size}px`,
+      top: `${top}px`,
+      position: "absolute",
+      zIndex: 1,
+    };
+
+    if (position === "left") {
+      style.left = `${Math.floor(Math.random() * 280)}px`; // 左邊擴寬
+    } else if (position === "right") {
+      style.right = `${Math.floor(Math.random() * 280)}px`; // 右邊擴寬
+    } else if (position === "center") {
+      const percentOffset = 25 + Math.random() * 50; // 中間區塊變寬（25% ~ 75%）
+      style.left = `${percentOffset}%`;
+      style.transform = `translateX(-50%)`;
+    }
+
+    return (
+      <img
+        key={`${position}-${index}`}
+        src="/assets/tree.svg"
+        alt={`tree-${position}-${index}`}
+        style={style}
+      />
+    );
+  };
+
   return (
-    <div className="relative mt-6 w-full max-w-3xl mx-auto">
-      {/* 中間固定：樹 - 門 - 樹 */}
-      <div className="flex justify-center gap-4 items-end z-10 relative">
-        <img src="/assets/tree.svg" alt="tree" className="w-[36px] h-auto" />
-        <img src="/assets/door.svg" alt="door" className="w-[50px] h-auto" />
-        <img src="/assets/tree.svg" alt="tree" className="w-[44px] h-auto" />
-      </div>
-
-      {/* 動態隨機的樹（左右生成） */}
-      {Array.from({ length: 10 }).map((_, index) => {
-        const side = Math.random() < 0.5 ? "left" : "right";
-        const offset = Math.floor(Math.random() * 160);
-        const size = Math.floor(Math.random() * 32) + 32;
-
-        return (
-          <img
-            key={index}
-            src="/assets/tree.svg"
-            alt={`tree-${index}`}
-            className="absolute bottom-0"
-            style={{
-              [side]: `${offset}px`,
-              width: `${size}px`,
-              zIndex: 0,
-            }}
-          />
-        );
-      })}
+    <div className="relative mt-6 w-full max-w-[1200px] mx-auto h-[100px]">
+      {Array.from({ length: leftTrees }).map((_, i) => generateTree(i, "left"))}
+      {Array.from({ length: centerTrees }).map((_, i) => generateTree(i, "center"))}
+      {Array.from({ length: rightTrees }).map((_, i) => generateTree(i, "right"))}
     </div>
   );
 };

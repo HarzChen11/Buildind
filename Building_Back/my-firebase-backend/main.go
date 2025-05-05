@@ -30,6 +30,7 @@ func main() {
 	firebase.InitFirebase()
 
 	http.HandleFunc("/api/line-login", withCORS(handlers.HandleLineCallback))
+	http.HandleFunc("/api/floors", withCORS(handlers.GetUserFloorsHandler))
 
 	fmt.Println("🚀 後端啟動中：在 http://localhost:8080 等待 LINE 登入回傳")
 	log.Fatal(http.ListenAndServe(":8080", nil))

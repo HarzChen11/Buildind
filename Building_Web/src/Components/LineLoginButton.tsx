@@ -1,18 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function LineCallback() {
   const [status, setStatus] = useState("登入中...");
+  const hasCalled = useRef(false); // ✅ 用 useRef 避免 re-render 觸發
 
   useEffect(() => {
+    if (hasCalled.current) return; // ✅ 已呼叫過就不再執行
+    hasCalled.current = true;
+
     const code = new URLSearchParams(window.location.search).get("code");
-  
     if (!code) {
       setStatus("❌ 無法取得登入憑證（code），請重新登入");
       return;
     }
-  
+
     console.log("🔍 準備送出 code:", code);
-  
+
     fetch("http://localhost:8080/api/line-login", {
       method: "POST",
       headers: {
