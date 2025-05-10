@@ -29,10 +29,12 @@ const Home = () => {
   });
 
   const [floors, setFloors] = useState<Floor[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
     if (currentUser) {
+      // 取得樓層資料
       fetch("http://localhost:8080/api/floors")
         .then((res) => res.json())
         .then((userFloors: Floor[]) => {
@@ -48,26 +50,58 @@ const Home = () => {
           });
           const sorted = Array.from(floorMap.values()).sort((a, b) => b.floorNumber - a.floorNumber);
           setFloors(sorted);
-          setHasLoaded(true); // ✅ 標記樓層已完成載入
+          setHasLoaded(true);
         })
         .catch((err) => {
           console.error("樓層載入錯誤", err);
           setFloors(defaultFloors.sort((a, b) => b.floorNumber - a.floorNumber));
           setHasLoaded(true);
         });
+  
+      // 取得所有在線使用者
+      fetch("http://localhost:8080/api/users")
+        .then((res) => res.json())
+        .then((onlineUsers: User[]) => {
+          setUsers(onlineUsers); // ✅ 這些會用於顯示樓層中的其他頭像
+        })
+        .catch((err) => {
+          console.error("使用者清單載入錯誤", err);
+        });
     } else {
       setFloors(defaultFloors.sort((a, b) => b.floorNumber - a.floorNumber));
       setHasLoaded(true);
     }
   }, [currentUser]);
+  
 
   const handleMove = (targetFloor: number) => {
     if (currentUser) {
+      // 1️⃣ 更新前端顯示狀態
       const updatedUser = { ...currentUser, floor: targetFloor };
       setCurrentUser(updatedUser);
       sessionStorage.setItem("user", JSON.stringify(updatedUser));
+  
+      // 2️⃣ 發送 API 請求，更新後端 Firestore 中的 cCurrentFloor
+      fetch("http://localhost:8080/api/move-floor", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          floor: targetFloor,
+        }),
+      })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error("後端樓層更新失敗");
+          }
+        })
+        .catch((err) => {
+          console.error("⚠️ 樓層更新錯誤：", err);
+        });
     }
-  };
+  };  
 
   return (
     <div className="relative w-full flex flex-col items-center justify-center py-10 px-4">
@@ -97,16 +131,16 @@ const Home = () => {
 
               <div className="flex-1 flex items-center justify-center space-x-2 text-lg">
                 <span>{floor.label || `${floor.floorNumber}F`}</span>
-                {currentUser &&
-  Number(currentUser.floor) === Number(floor.floorNumber) &&
-  currentUser.avatar && (
-    <img
-      src={currentUser.avatar}
-      alt="使用者頭像"
-      className="w-8 h-8 rounded-full border border-gray-300 shadow"
-    />
-)}
-
+                {users
+                  .filter(u => u.currentFloor === floor.floorNumber)
+                  .map((u) => (
+                    <img
+                      key={u.id}
+                      src={u.avatar}
+                      alt={u.name}
+                      className="w-8 h-8 rounded-full border border-gray-300 shadow"
+                    />
+                  ))}
               </div>
 
               {floor.isPublicSpace && currentUser && (
@@ -114,7 +148,8 @@ const Home = () => {
                   onClick={() => handleMove(floor.floorNumber)}
                   className="text-sm px-3 py-1 border rounded bg-white hover:bg-gray-100"
                 >
-                  Move to {floor.label || `${floor.floorNumber}F`}
+                  Move to Here!
+                  {/* Move to {floor.label || `${floor.floorNumber}F`} */}
                 </button>
               )}
             </div>

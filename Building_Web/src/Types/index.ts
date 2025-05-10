@@ -4,6 +4,7 @@ export interface User {
     name: string;
     avatar: string;
     floor: number;
+    currentFloor: number;
   }
   
   export interface Floor {
