@@ -23,6 +23,7 @@ const Home = () => {
       return {
         ...parsed,
         floor: Number(parsed.floor),
+        currentFloor: Number(parsed.currentFloor),
       };
     }
     return null;
@@ -34,7 +35,6 @@ const Home = () => {
 
   useEffect(() => {
     if (currentUser) {
-      // 取得樓層資料
       fetch("http://localhost:8080/api/floors")
         .then((res) => res.json())
         .then((userFloors: Floor[]) => {
@@ -57,12 +57,11 @@ const Home = () => {
           setFloors(defaultFloors.sort((a, b) => b.floorNumber - a.floorNumber));
           setHasLoaded(true);
         });
-  
-      // 取得所有在線使用者
+
       fetch("http://localhost:8080/api/users")
         .then((res) => res.json())
         .then((onlineUsers: User[]) => {
-          setUsers(onlineUsers); // ✅ 這些會用於顯示樓層中的其他頭像
+          setUsers(onlineUsers);
         })
         .catch((err) => {
           console.error("使用者清單載入錯誤", err);
@@ -72,36 +71,34 @@ const Home = () => {
       setHasLoaded(true);
     }
   }, [currentUser]);
-  
 
   const handleMove = (targetFloor: number) => {
-    if (currentUser) {
-      // 1️⃣ 更新前端顯示狀態
-      const updatedUser = { ...currentUser, floor: targetFloor };
-      setCurrentUser(updatedUser);
-      sessionStorage.setItem("user", JSON.stringify(updatedUser));
-  
-      // 2️⃣ 發送 API 請求，更新後端 Firestore 中的 cCurrentFloor
-      fetch("http://localhost:8080/api/move-floor", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: currentUser.id,
-          floor: targetFloor,
-        }),
+    if (!currentUser) return;
+
+    fetch("http://localhost:8080/api/move-floor", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: currentUser.id,
+        floor: targetFloor,
+      }),
+    })
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error("後端樓層更新失敗");
+        }
+
+        const updatedUser = { ...currentUser, currentFloor: targetFloor };
+        setCurrentUser(updatedUser);
+        sessionStorage.setItem("user", JSON.stringify(updatedUser));
       })
-        .then((res) => {
-          if (!res.ok) {
-            throw new Error("後端樓層更新失敗");
-          }
-        })
-        .catch((err) => {
-          console.error("⚠️ 樓層更新錯誤：", err);
-        });
-    }
-  };  
+      .catch((err) => {
+        console.error("⚠️ 樓層更新錯誤：", err);
+        alert("更新樓層失敗，請稍後再試！");
+      });
+  };
 
   return (
     <div className="relative w-full flex flex-col items-center justify-center py-10 px-4">
@@ -132,7 +129,7 @@ const Home = () => {
               <div className="flex-1 flex items-center justify-center space-x-2 text-lg">
                 <span>{floor.label || `${floor.floorNumber}F`}</span>
                 {users
-                  .filter(u => u.currentFloor === floor.floorNumber)
+                  .filter((u) => u.currentFloor === floor.floorNumber)
                   .map((u) => (
                     <img
                       key={u.id}
@@ -143,15 +140,29 @@ const Home = () => {
                   ))}
               </div>
 
-              {floor.isPublicSpace && currentUser && (
-                <button
-                  onClick={() => handleMove(floor.floorNumber)}
-                  className="text-sm px-3 py-1 border rounded bg-white hover:bg-gray-100"
-                >
-                  Move to Here!
-                  {/* Move to {floor.label || `${floor.floorNumber}F`} */}
-                </button>
-              )}
+              <div className="flex space-x-2">
+                {/* Move to Here 按鈕（公共樓層） */}
+                {floor.isPublicSpace && currentUser && (
+                  <button
+                    onClick={() => handleMove(floor.floorNumber)}
+                    className="text-sm px-3 py-1 border rounded bg-white hover:bg-gray-100"
+                  >
+                    Move to Here!
+                  </button>
+                )}
+
+                {/* Back to Home 按鈕（只在自己專屬樓層出現，當前樓層不是 home 樓層時） */}
+                {currentUser &&
+                  floor.floorNumber === currentUser.floor &&
+                  currentUser.currentFloor !== currentUser.floor && (
+                    <button
+                      onClick={() => handleMove(currentUser.floor)}
+                      className="text-sm px-3 py-1 border rounded bg-yellow-100 hover:bg-yellow-200"
+                    >
+                      Back to Home
+                    </button>
+                  )}
+              </div>
             </div>
           ))}
       </div>
