@@ -20,21 +20,30 @@ func CreateUser(userId string, displayName string, avatar string) int {
 	docSnap, err := docRef.Get(context.Background())
 
 	if err == nil && docSnap.Exists() {
-		_, updateErr := docRef.Update(context.Background(), []firestore.Update{
-			{Path: "cIsOnline", Value: true},
-		})
-		if updateErr != nil {
-			log.Printf("⚠️ 更新 cIsOnline 失敗: %v", updateErr)
-		} else {
-			fmt.Println("🔄 已標記舊使用者為線上狀態")
+		// 取得使用者專屬樓層
+		floorRaw := docSnap.Data()["cFloor"]
+		var floor int
+		switch v := floorRaw.(type) {
+		case int64:
+			floor = int(v)
+		case float64:
+			floor = int(v)
+		default:
+			floor = 1
 		}
 
-		if floor, ok := docSnap.Data()["cFloor"].(int64); ok {
-			fmt.Println("⚠️ 使用者已註冊，樓層為：", floor)
-			return int(floor)
+		// ✅ 每次登入強制移回專屬樓層
+		_, updateErr := docRef.Update(context.Background(), []firestore.Update{
+			{Path: "cIsOnline", Value: true},
+			{Path: "cCurrentFloor", Value: floor},
+		})
+		if updateErr != nil {
+			log.Printf("⚠️ 更新 cIsOnline 或 cCurrentFloor 失敗: %v", updateErr)
+		} else {
+			fmt.Println("🔄 已標記舊使用者為線上狀態，並移回樓層：", floor)
 		}
-		fmt.Println("⚠️ 使用者已註冊，但未找到樓層資訊，預設回傳 1")
-		return 1
+
+		return floor
 	}
 
 	if status.Code(err) != codes.NotFound {
@@ -43,7 +52,7 @@ func CreateUser(userId string, displayName string, avatar string) int {
 
 	counterRef := firebase.FirestoreClient.Collection("Meta").Doc("UserCounter")
 
-	var newFloor int // 🔁 用區域變數來儲存分配的樓層
+	var newFloor int
 	err = firebase.FirestoreClient.RunTransaction(context.Background(), func(ctx context.Context, tx *firestore.Transaction) error {
 		usersIter := firebase.FirestoreClient.Collection("Users").Documents(ctx)
 		defer usersIter.Stop()
@@ -78,12 +87,13 @@ func CreateUser(userId string, displayName string, avatar string) int {
 			{Path: "lastUserId", Value: firestore.Increment(1)},
 		})
 		tx.Set(docRef, map[string]interface{}{
-			"cID":       newID,
-			"cName":     displayName,
-			"cAvatar":   avatar,
-			"cFloor":    newFloor,
-			"cCreateDT": time.Now(),
-			"cIsOnline": true,
+			"cID":           newID,
+			"cName":         displayName,
+			"cAvatar":       avatar,
+			"cFloor":        newFloor,
+			"cCurrentFloor": newFloor, // ✅ 新使用者初始也要設目前樓層
+			"cCreateDT":     time.Now(),
+			"cIsOnline":     true,
 		}, firestore.MergeAll)
 
 		return nil
@@ -94,5 +104,5 @@ func CreateUser(userId string, displayName string, avatar string) int {
 	}
 
 	fmt.Println("✅ 成功註冊新用戶")
-	return newFloor // ✅ 回傳區域變數
+	return newFloor
 }
