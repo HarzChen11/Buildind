@@ -28,8 +28,8 @@ const LineCallback = () => {
         .then((data) => {
           console.log("登入成功，使用者資料：", data);
 
-          // 可以儲存到 localStorage / context，這邊暫時使用 localStorage
-          localStorage.setItem("user", JSON.stringify(data));
+          // 關閉網頁要重新登入
+          sessionStorage.setItem("user", JSON.stringify(data));
 
           // 導回首頁
           navigate("/");

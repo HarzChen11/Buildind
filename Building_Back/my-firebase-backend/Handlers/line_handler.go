@@ -23,6 +23,13 @@ type TokenResponse struct {
 }
 
 type ProfileResponse struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Avatar string `json:"avatar"`
+	Floor  int    `json:"floor"`
+}
+
+type LineProfile struct {
 	UserID      string `json:"userId"`
 	DisplayName string `json:"displayName"`
 	PictureURL  string `json:"pictureUrl"`
@@ -108,21 +115,25 @@ func HandleLineCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	defer profileResp.Body.Close()
 
-	var profile ProfileResponse
-	if err := json.NewDecoder(profileResp.Body).Decode(&profile); err != nil {
+	var lineProfile LineProfile
+	if err := json.NewDecoder(profileResp.Body).Decode(&lineProfile); err != nil {
 		http.Error(w, `{"error": "profile 解碼失敗"}`, http.StatusInternalServerError)
 		return
 	}
 
-	fmt.Printf("✅ 取得使用者資料: %+v\n", profile)
+	fmt.Printf("✅ 取得使用者資料: %+v\n", lineProfile)
 
 	// Step 4：嘗試註冊 Firestore
-	CreateUser(profile.UserID, profile.DisplayName, profile.PictureURL)
+	userFloor := CreateUser(lineProfile.UserID, lineProfile.DisplayName, lineProfile.PictureURL)
 
 	// Step 5：回傳給前端
-	json.NewEncoder(w).Encode(map[string]string{
-		"userId": profile.UserID,
-		"name":   profile.DisplayName,
-		"avatar": profile.PictureURL,
-	})
+	response := ProfileResponse{
+		ID:     lineProfile.UserID,
+		Name:   lineProfile.DisplayName,
+		Avatar: lineProfile.PictureURL,
+		Floor:  userFloor,
+	}
+
+	json.NewEncoder(w).Encode(response)
+
 }

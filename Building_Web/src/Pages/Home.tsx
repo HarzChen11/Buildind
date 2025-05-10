@@ -10,12 +10,17 @@ const defaultFloors: Floor[] = Array.from({ length: 10 }, (_, i) => ({
 }));
 
 const Home = () => {
-  const [currentUser, setCurrentUser] = useState<User | null>({
-    id: "u001",
-    name: "Harz",
-    avatar: "🧍‍♀️",
-    floor: 103,
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const stored = sessionStorage.getItem("user");
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return {
+        ...parsed,
+        floor: Number(parsed.floor), // ✅ 關鍵修正
+      };
+    }
+    return null;
+  });  
 
   const [floors, setFloors] = useState<Floor[]>([]);
 
@@ -26,6 +31,8 @@ const Home = () => {
         .then((res) => res.json())
         .then((userFloors: Floor[]) => {
           setFloors([...defaultFloors, ...userFloors]);
+          console.log("💡 currentUser", currentUser);
+
         })
         .catch((err) => {
           console.error("載入樓層失敗", err);
@@ -47,13 +54,21 @@ const Home = () => {
     <div className="relative w-full flex flex-col items-center justify-center py-10 px-4">
       {/* 註冊/登入選項 */}
       <div className="fixed top-4 right-4 z-50">
-        <a
-          href="https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=2007364290&redirect_uri=http://localhost:5173/callback&state=xyz123&scope=profile%20openid&bot_prompt=normal"
-          className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-        >
-          使用 LINE 註冊／登入
-        </a>
-      </div>
+  {currentUser ? (
+    <div className="bg-gray-100 px-4 py-2 rounded text-gray-800 shadow">
+      Hi! {currentUser.name}，👋 歡迎回家
+    </div>
+  ) : (
+    <a
+      href="https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=2007364290&redirect_uri=http://localhost:5173/callback&state=xyz123&scope=profile%20openid&bot_prompt=normal"
+      className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+    >
+      使用 LINE 註冊／登入
+    </a>
+  )}
+</div>
+
+
 
       {/* 樓層顯示 */}
       <div className="w-full max-w-md border border-gray-700 bg-white shadow-xl">
@@ -68,10 +83,15 @@ const Home = () => {
               <div className="w-2/5 text-lg">{floor.label || `${floor.floorNumber}F`}</div>
 
               {currentUser?.floor === floor.floorNumber && (
-                <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xl">
-                  {currentUser.avatar}
+                <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                  <img
+                    src={currentUser.avatar}
+                    alt="使用者頭像"
+                    className="w-8 h-8 rounded-full border border-gray-300 shadow"
+                  />
                 </div>
               )}
+
 
               {floor.isPublicSpace && currentUser && (
                 <button
