@@ -13,34 +13,38 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var assignedFloor int
-
 // 回傳樓層到前端
+// ✅ 完整安全寫法（不依賴全域變數）
 func CreateUser(userId string, displayName string, avatar string) int {
 	docRef := firebase.FirestoreClient.Collection("Users").Doc(userId)
-
-	// 先嘗試取得該用戶是否已存在
 	docSnap, err := docRef.Get(context.Background())
-	if err == nil {
-		fmt.Println("⚠️ 使用者已註冊，跳過註冊流程")
-		if floorVal, ok := docSnap.Data()["cFloor"].(int64); ok {
-			return int(floorVal)
+
+	if err == nil && docSnap.Exists() {
+		_, updateErr := docRef.Update(context.Background(), []firestore.Update{
+			{Path: "cIsOnline", Value: true},
+		})
+		if updateErr != nil {
+			log.Printf("⚠️ 更新 cIsOnline 失敗: %v", updateErr)
+		} else {
+			fmt.Println("🔄 已標記舊使用者為線上狀態")
 		}
-		return 0 // 若 cFloor 欄位不存在
+
+		if floor, ok := docSnap.Data()["cFloor"].(int64); ok {
+			fmt.Println("⚠️ 使用者已註冊，樓層為：", floor)
+			return int(floor)
+		}
+		fmt.Println("⚠️ 使用者已註冊，但未找到樓層資訊，預設回傳 1")
+		return 1
 	}
 
-	// 如果是非 NotFound 錯誤，就報錯
 	if status.Code(err) != codes.NotFound {
 		log.Fatalf("❌ 讀取資料錯誤: %v", err)
 	}
 
-	// ⬇️ 尚未註冊，進行註冊程序
 	counterRef := firebase.FirestoreClient.Collection("Meta").Doc("UserCounter")
 
-	var newFloor int
-
+	var newFloor int // 🔁 用區域變數來儲存分配的樓層
 	err = firebase.FirestoreClient.RunTransaction(context.Background(), func(ctx context.Context, tx *firestore.Transaction) error {
-		// 1️⃣ 查詢目前最大樓層
 		usersIter := firebase.FirestoreClient.Collection("Users").Documents(ctx)
 		defer usersIter.Stop()
 
@@ -50,15 +54,12 @@ func CreateUser(userId string, displayName string, avatar string) int {
 			if err != nil {
 				break
 			}
-			if floor, ok := doc.Data()["cFloor"].(int64); ok {
-				if int(floor) > maxFloor {
-					maxFloor = int(floor)
-				}
+			if floor, ok := doc.Data()["cFloor"].(int64); ok && int(floor) > maxFloor {
+				maxFloor = int(floor)
 			}
 		}
 		newFloor = maxFloor + 1
 
-		// 2️⃣ 查詢 lastUserId
 		counterDoc, err := tx.Get(counterRef)
 		if err != nil && status.Code(err) != codes.NotFound {
 			return err
@@ -73,17 +74,16 @@ func CreateUser(userId string, displayName string, avatar string) int {
 		}
 		newID := lastID + 1
 
-		// 3️⃣ 更新 UserCounter & 建立新用戶
 		tx.Update(counterRef, []firestore.Update{
 			{Path: "lastUserId", Value: firestore.Increment(1)},
 		})
-
 		tx.Set(docRef, map[string]interface{}{
 			"cID":       newID,
 			"cName":     displayName,
 			"cAvatar":   avatar,
 			"cFloor":    newFloor,
 			"cCreateDT": time.Now(),
+			"cIsOnline": true,
 		}, firestore.MergeAll)
 
 		return nil
@@ -93,6 +93,6 @@ func CreateUser(userId string, displayName string, avatar string) int {
 		log.Fatalf("❌ 註冊失敗: %v", err)
 	}
 
-	fmt.Printf("✅ 成功註冊新用戶，指派樓層：%d\n", newFloor)
-	return newFloor
+	fmt.Println("✅ 成功註冊新用戶")
+	return newFloor // ✅ 回傳區域變數
 }
