@@ -183,7 +183,9 @@ const Home = () => {
                     onClick={() => handleMove(floor.floorNumber)}
                     className="text-sm px-3 py-1 border rounded bg-white hover:bg-gray-100"
                   >
-                    Move to Here!
+                    {currentUser.currentFloor === floor.floorNumber
+                      ? "Open ChatBox 💬"
+                      : "Move to Here!"}
                   </button>
                 )}
 
