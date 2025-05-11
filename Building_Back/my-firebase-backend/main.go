@@ -39,7 +39,7 @@ func main() {
 	r.HandleFunc("/api/move-floor", withCORS(handlers.HandleMoveFloor)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/init-chatrooms", withCORS(handlers.InitChatRoomsHandler)).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/logout", withCORS(handlers.HandleLogout)).Methods("POST", "OPTIONS")
-	r.HandleFunc("/api/clean-messages", handlers.CleanMessagesHandler).Methods("GET")
+	r.HandleFunc("/api/clean-messages", handlers.CleanExpiredMessages).Methods("GET")
 
 	fmt.Println("🚀 後端啟動中：在 http://localhost:8080 等待 LINE 登入回傳")
 	log.Fatal(http.ListenAndServe(":8080", r))

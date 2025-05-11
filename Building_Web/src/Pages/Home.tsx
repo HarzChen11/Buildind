@@ -1,5 +1,4 @@
-// ✅ 引入必要函式與模組
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { User, Floor } from "../Types";
 import BuildingDecoration from "../Components/BuildingDecoration";
 import { db } from "../Firebase/Firebase";
@@ -19,7 +18,6 @@ const defaultFloors: Floor[] = [
   { floorNumber: 1, label: "OUTSIDE", isPublicSpace: true },
 ];
 
-// ✅ 顯示樓層對應 Emoji
 const getFloorEmoji = (label: string) => {
   switch (label) {
     case "Gym": return "🏋️";
@@ -32,7 +30,6 @@ const getFloorEmoji = (label: string) => {
 };
 
 const Home = () => {
-  // ✅ 使用者與聊天室狀態
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const stored = sessionStorage.getItem("user");
     if (stored) {
@@ -51,9 +48,11 @@ const Home = () => {
   const [chatMessages, setChatMessages] = useState<{ sender: string; avatar: string; text: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [isMinimized, setIsMinimized] = useState(false);
+  const [activePopoverFloor, setActivePopoverFloor] = useState<number | null>(null);
   const currentFloorObj = floors.find(f => f.floorNumber === currentUser?.currentFloor);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ 讀取樓層與使用者資訊（初次進入頁面）
+
   useEffect(() => {
     if (currentUser) {
       fetch("http://localhost:8080/api/floors")
@@ -93,10 +92,8 @@ const Home = () => {
     }
   }, [currentUser]);
 
-  // ✅ 每 10 秒更新在線使用者狀態
   useEffect(() => {
     if (!currentUser) return;
-
     const fetchUsers = () => {
       fetch("http://localhost:8080/api/users")
         .then((res) => res.json())
@@ -107,45 +104,55 @@ const Home = () => {
           console.error("輪詢使用者清單失敗", err);
         });
     };
-
     fetchUsers();
     const interval = setInterval(fetchUsers, 10000);
     return () => clearInterval(interval);
   }, [currentUser]);
 
-  // ✅ 離開頁面時發送登出
   useEffect(() => {
     if (!currentUser) return;
-
     const handleUnload = () => {
       navigator.sendBeacon("http://localhost:8080/api/logout", JSON.stringify({ userId: currentUser.id }));
     };
-
     window.addEventListener("beforeunload", handleUnload);
     return () => window.removeEventListener("beforeunload", handleUnload);
   }, [currentUser]);
 
-  // ✅ Firebase 即時監聽聊天室訊息（根據當前樓層）
   useEffect(() => {
     if (!currentFloorObj?.label) return;
-
     const q = query(
       collection(db, "ChatRooms", currentFloorObj.label, "messages"),
       orderBy("timestamp", "asc")
     );
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const messages = snapshot.docs.map(doc => doc.data() as { sender: string; avatar: string; text: string });
       setChatMessages(messages);
     });
-
     return () => unsubscribe();
   }, [currentFloorObj?.label]);
 
-  // ✅ 切換樓層後更新後端與 local state
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(event.target as Node)
+      ) {
+        setActivePopoverFloor(null); // 自動關閉
+      }
+    };
+
+    if (activePopoverFloor !== null) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [activePopoverFloor]);
+
+
   const handleMove = (targetFloor: number) => {
     if (!currentUser) return;
-
     fetch("http://localhost:8080/api/move-floor", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -163,33 +170,8 @@ const Home = () => {
       });
   };
 
-  // 🏗️ UI 元件略，僅保留核心功能相關，請插入上方原本的 return 區塊內容
-  // ✅ 修改發送按鈕事件為 Firestore 寫入
-  // 請將原本 Send 按鈕內的 onClick 改為：
-  //
-  // onClick={async () => {
-  //   if (!chatInput.trim() || !currentUser || !currentFloorObj?.label) return;
-  //   const newMessage = {
-  //     sender: currentUser.name,
-  //     avatar: currentUser.avatar,
-  //     text: chatInput.trim(),
-  //     timestamp: serverTimestamp(),
-  //   };
-  //   try {
-  //     await addDoc(collection(db, "ChatRooms", currentFloorObj.label, "messages"), newMessage);
-  //     setChatInput("");
-  //   } catch (err) {
-  //     console.error("❌ 發送訊息失敗：", err);
-  //     alert("訊息發送失敗，請稍後再試！");
-  //   }
-  // }}
-
   return (
-    <div
-      className={`relative w-full flex flex-col items-center py-28 px-4 transition-all duration-300 ${isChatOpen ? "md:ml-[-180px]" : ""
-        }`}
-    >
-      {/* 使用者登入狀態提示或登入連結 */}
+    <div className="relative w-full flex flex-col items-center py-28 px-4 transition-all duration-300">
       <div className="fixed top-4 right-4 z-50">
         {currentUser ? (
           <div className="bg-gray-100 px-4 py-2 rounded text-gray-800 shadow">
@@ -205,7 +187,6 @@ const Home = () => {
         )}
       </div>
 
-      {/* 建築樓層清單 */}
       <div className="w-full max-w-md border border-gray-700 bg-white shadow-xl">
         {hasLoaded &&
           floors.map((floor) => (
@@ -213,16 +194,18 @@ const Home = () => {
               key={floor.floorNumber}
               className="relative border-b border-black h-16 flex items-center justify-between px-4"
             >
-              {/* 樓層資訊 + 狀態燈泡 */}
-              <div className="w-1/5 flex items-center gap-3 text-lg font-bold">
-                {/* ✅ 只有非公共樓層且樓層編號 >=100 才顯示燈泡 */}
+              <div className="w-1/5 flex items-center gap-2 text-lg font-bold">
+                {floor.isPublicSpace && (
+                  <button
+                    onClick={() => setActivePopoverFloor(activePopoverFloor === floor.floorNumber ? null : floor.floorNumber)}
+                    className="text-sm px-1 py-1 rounded border hover:bg-gray-100"
+                  >
+                    👥
+                  </button>
+                )}
                 {!floor.isPublicSpace && floor.floorNumber >= 100 && (
                   <img
-                    src={
-                      users.some((u) => u.floor === floor.floorNumber && u.isOnline)
-                        ? "/assets/light-on.svg"
-                        : "/assets/light-off.svg"
-                    }
+                    src={users.some((u) => u.floor === floor.floorNumber && u.isOnline) ? "/assets/light-on.svg" : "/assets/light-off.svg"}
                     alt="online status"
                     className="w-5 h-5"
                   />
@@ -230,7 +213,6 @@ const Home = () => {
                 <span className="text-lg font-bold">{floor.floorNumber}F</span>
               </div>
 
-              {/* 中間：樓層名稱與頭像 */}
               <div className="flex-1 flex items-center justify-center space-x-2 text-lg">
                 <span>{floor.label || `${floor.floorNumber}F`}</span>
                 {users
@@ -245,38 +227,53 @@ const Home = () => {
                   ))}
               </div>
 
-              {/* 右側操作按鈕區塊 */}
-              <div className="flex space-x-2">
-                {/* 公共樓層：可移動或打開聊天室 */}
+              <div className="flex space-x-2 items-center">
                 {floor.isPublicSpace && currentUser && (
                   <button
                     onClick={() => {
                       if (currentUser.currentFloor === floor.floorNumber) {
-                        setIsChatOpen(true); // ✅ 點擊時打開聊天室
+                        setIsChatOpen(true);
                       } else {
                         handleMove(floor.floorNumber);
                       }
                     }}
                     className="text-sm px-3 py-1 border rounded bg-white hover:bg-gray-100"
                   >
-                    {currentUser.currentFloor === floor.floorNumber
-                      ? "Open ChatBox 💬"
-                      : "Move to Here!"}
+                    {currentUser.currentFloor === floor.floorNumber ? "Open ChatBox 💬" : "Move to Here!"}
                   </button>
                 )}
 
-                {/* 個人樓層：Back to Home or You're Home */}
                 {currentUser && floor.floorNumber === currentUser.floor && (
                   <button
                     onClick={() => handleMove(currentUser.floor)}
                     className="text-sm px-3 py-1 border rounded bg-yellow-100 hover:bg-yellow-200"
                   >
-                    {currentUser.currentFloor === currentUser.floor
-                      ? "You're Home 🏠"
-                      : "Back to Home"}
+                    {currentUser.currentFloor === currentUser.floor ? "You're Home 🏠" : "Back to Home"}
                   </button>
                 )}
               </div>
+
+              {activePopoverFloor === floor.floorNumber && (
+                <div
+                  ref={popoverRef}  // ✅ 加上這一行
+                  className="absolute left-16 top-12 bg-white border shadow-lg p-2 rounded-lg z-50 w-40"
+                >
+                  <div className="text-sm font-semibold mb-2">目前在線：</div>
+                  <div className="flex flex-wrap gap-2">
+                    {users
+                      .filter((u) => u.currentFloor === floor.floorNumber && u.isOnline)
+                      .map((u) => (
+                        <img
+                          key={u.id}
+                          src={u.avatar}
+                          alt={u.name}
+                          title={u.name}
+                          className="w-8 h-8 rounded-full border"
+                        />
+                      ))}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
       </div>
@@ -287,32 +284,19 @@ const Home = () => {
             <h2 className="text-lg font-bold">
               {getFloorEmoji(currentFloorObj?.label ?? "")} {currentFloorObj?.label} Chat Room
             </h2>
-
             <div className="space-x-2">
               <button onClick={() => setIsMinimized(true)} className="text-gray-500 hover:text-black">➖</button>
               <button onClick={() => setIsChatOpen(false)} className="text-gray-500 hover:text-black">❌</button>
             </div>
           </div>
-
-          {/* 訊息列表 */}
           <div className="flex-1 overflow-y-auto space-y-2 border p-2 rounded">
             {chatMessages.map((msg, idx) => {
               const isMine = msg.sender === currentUser?.name;
               return (
-                <div
-                  key={idx}
-                  className={`flex ${isMine ? "justify-start" : "justify-end"}`}
-                >
+                <div key={idx} className={`flex ${isMine ? "justify-start" : "justify-end"}`}>
                   <div className={`max-w-[70%] flex items-start gap-2 ${isMine ? "" : "flex-row-reverse"}`}>
-                    <img
-                      src={msg.avatar}
-                      alt={msg.sender}
-                      className="w-6 h-6 rounded-full"
-                    />
-                    <div
-                      className={`text-sm px-3 py-2 rounded-lg shadow ${isMine ? "bg-gray-200 text-left" : "bg-blue-500 text-white text-right"
-                        }`}
-                    >
+                    <img src={msg.avatar} alt={msg.sender} className="w-6 h-6 rounded-full" />
+                    <div className={`text-sm px-3 py-2 rounded-lg shadow ${isMine ? "bg-gray-200 text-left" : "bg-blue-500 text-white text-right"}`}>
                       <div className="font-semibold">{msg.sender}</div>
                       <div>{msg.text}</div>
                     </div>
@@ -321,8 +305,6 @@ const Home = () => {
               );
             })}
           </div>
-
-          {/* 發送輸入區 */}
           <div className="mt-2 flex">
             <input
               type="text"
@@ -334,20 +316,15 @@ const Home = () => {
             <button
               onClick={async () => {
                 if (!chatInput.trim() || !currentUser || !currentFloorObj?.label) return;
-
                 const newMessage = {
                   sender: currentUser.name,
                   avatar: currentUser.avatar,
                   text: chatInput.trim(),
-                  timestamp: serverTimestamp(), // 🔐 Firebase 記錄時間
+                  timestamp: serverTimestamp(),
                 };
-
                 try {
-                  await addDoc(
-                    collection(db, "ChatRooms", currentFloorObj.label, "messages"),
-                    newMessage
-                  );
-                  setChatInput(""); // 清除輸入框
+                  await addDoc(collection(db, "ChatRooms", currentFloorObj.label, "messages"), newMessage);
+                  setChatInput("");
                 } catch (err) {
                   console.error("❌ 發送訊息失敗：", err);
                   alert("訊息發送失敗，請稍後再試！");
@@ -361,19 +338,16 @@ const Home = () => {
         </div>
       )}
 
-      {/* 聊天室最小化 */}
       {isChatOpen && isMinimized && (
         <div
           onClick={() => setIsMinimized(false)}
-          className="fixed right-4 top-20 px-4 h-12 bg-blue-500 text-white flex items-center justify-center rounded-full shadow-lg cursor-pointer z-50 text-xl space-x-2"
-          title={`${currentFloorObj?.label} Chat Room`}
+          className="fixed right-4 top-20 px-4 h-12 bg-blue-500 text-white flex items-center justify-center rounded-full shadow-lg cursor-pointer z-50"
+          title="Open Chat"
         >
-          <span>{getFloorEmoji(currentFloorObj?.label ?? "")}</span>
-          <span>💬</span>
+          {getFloorEmoji(currentFloorObj?.label ?? "")} 💬
         </div>
       )}
 
-      {/* 建築裝飾元件 */}
       <BuildingDecoration />
     </div>
   );
