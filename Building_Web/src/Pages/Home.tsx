@@ -1,14 +1,17 @@
+// ✅ 引入必要函式與模組
 import React, { useEffect, useState } from "react";
 import { User, Floor } from "../Types";
 import BuildingDecoration from "../Components/BuildingDecoration";
+import { db } from "../Firebase/Firebase";
+import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy } from "firebase/firestore";
 
-// 預設樓層資料
+// ✅ 預設樓層資料
 const defaultFloors: Floor[] = [
-  { floorNumber: 6, label: "--", isPublicSpace: false },
-  { floorNumber: 7, label: "--", isPublicSpace: false },
-  { floorNumber: 8, label: "--", isPublicSpace: false },
-  { floorNumber: 9, label: "--", isPublicSpace: false },
-  { floorNumber: 10, label: "--", isPublicSpace: false },
+  // { floorNumber: 6, label: "--", isPublicSpace: false },
+  // { floorNumber: 7, label: "--", isPublicSpace: false },
+  // { floorNumber: 8, label: "--", isPublicSpace: false },
+  // { floorNumber: 9, label: "--", isPublicSpace: false },
+  // { floorNumber: 10, label: "--", isPublicSpace: false },
   { floorNumber: 5, label: "Gym", isPublicSpace: true },
   { floorNumber: 4, label: "Cinema", isPublicSpace: true },
   { floorNumber: 3, label: "Cafe", isPublicSpace: true },
@@ -16,6 +19,7 @@ const defaultFloors: Floor[] = [
   { floorNumber: 1, label: "OUTSIDE", isPublicSpace: true },
 ];
 
+// ✅ 顯示樓層對應 Emoji
 const getFloorEmoji = (label: string) => {
   switch (label) {
     case "Gym": return "🏋️";
@@ -27,20 +31,15 @@ const getFloorEmoji = (label: string) => {
   }
 };
 
-
 const Home = () => {
-  // 使用者資料狀態
+  // ✅ 使用者與聊天室狀態
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const stored = sessionStorage.getItem("user");
     if (stored) {
       const parsed = JSON.parse(stored);
       const floor = Number(parsed.floor);
       const currentFloor = parsed.currentFloor !== undefined ? Number(parsed.currentFloor) : floor;
-      return {
-        ...parsed,
-        floor,
-        currentFloor,
-      };
+      return { ...parsed, floor, currentFloor };
     }
     return null;
   });
@@ -54,8 +53,7 @@ const Home = () => {
   const [isMinimized, setIsMinimized] = useState(false);
   const currentFloorObj = floors.find(f => f.floorNumber === currentUser?.currentFloor);
 
-
-  // 取得樓層與使用者資料
+  // ✅ 讀取樓層與使用者資訊（初次進入頁面）
   useEffect(() => {
     if (currentUser) {
       fetch("http://localhost:8080/api/floors")
@@ -95,7 +93,7 @@ const Home = () => {
     }
   }, [currentUser]);
 
-  // 輪詢更新使用者在線狀態
+  // ✅ 每 10 秒更新在線使用者狀態
   useEffect(() => {
     if (!currentUser) return;
 
@@ -115,34 +113,43 @@ const Home = () => {
     return () => clearInterval(interval);
   }, [currentUser]);
 
-  // 註冊 beforeunload 登出事件（使用 navigator.sendBeacon）
+  // ✅ 離開頁面時發送登出
   useEffect(() => {
     if (!currentUser) return;
 
     const handleUnload = () => {
-      navigator.sendBeacon(
-        "http://localhost:8080/api/logout",
-        JSON.stringify({ userId: currentUser.id })
-      );
+      navigator.sendBeacon("http://localhost:8080/api/logout", JSON.stringify({ userId: currentUser.id }));
     };
 
     window.addEventListener("beforeunload", handleUnload);
     return () => window.removeEventListener("beforeunload", handleUnload);
   }, [currentUser]);
 
-  // 使用者移動樓層
+  // ✅ Firebase 即時監聽聊天室訊息（根據當前樓層）
+  useEffect(() => {
+    if (!currentFloorObj?.label) return;
+
+    const q = query(
+      collection(db, "ChatRooms", currentFloorObj.label, "messages"),
+      orderBy("timestamp", "asc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const messages = snapshot.docs.map(doc => doc.data() as { sender: string; avatar: string; text: string });
+      setChatMessages(messages);
+    });
+
+    return () => unsubscribe();
+  }, [currentFloorObj?.label]);
+
+  // ✅ 切換樓層後更新後端與 local state
   const handleMove = (targetFloor: number) => {
     if (!currentUser) return;
 
     fetch("http://localhost:8080/api/move-floor", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        userId: currentUser.id,
-        floor: targetFloor,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: currentUser.id, floor: targetFloor }),
     })
       .then((res) => {
         if (!res.ok) throw new Error("後端樓層更新失敗");
@@ -155,6 +162,27 @@ const Home = () => {
         alert("更新樓層失敗，請稍後再試！");
       });
   };
+
+  // 🏗️ UI 元件略，僅保留核心功能相關，請插入上方原本的 return 區塊內容
+  // ✅ 修改發送按鈕事件為 Firestore 寫入
+  // 請將原本 Send 按鈕內的 onClick 改為：
+  //
+  // onClick={async () => {
+  //   if (!chatInput.trim() || !currentUser || !currentFloorObj?.label) return;
+  //   const newMessage = {
+  //     sender: currentUser.name,
+  //     avatar: currentUser.avatar,
+  //     text: chatInput.trim(),
+  //     timestamp: serverTimestamp(),
+  //   };
+  //   try {
+  //     await addDoc(collection(db, "ChatRooms", currentFloorObj.label, "messages"), newMessage);
+  //     setChatInput("");
+  //   } catch (err) {
+  //     console.error("❌ 發送訊息失敗：", err);
+  //     alert("訊息發送失敗，請稍後再試！");
+  //   }
+  // }}
 
   return (
     <div
@@ -259,6 +287,7 @@ const Home = () => {
             <h2 className="text-lg font-bold">
               {getFloorEmoji(currentFloorObj?.label ?? "")} {currentFloorObj?.label} Chat Room
             </h2>
+
             <div className="space-x-2">
               <button onClick={() => setIsMinimized(true)} className="text-gray-500 hover:text-black">➖</button>
               <button onClick={() => setIsChatOpen(false)} className="text-gray-500 hover:text-black">❌</button>
@@ -267,15 +296,30 @@ const Home = () => {
 
           {/* 訊息列表 */}
           <div className="flex-1 overflow-y-auto space-y-2 border p-2 rounded">
-            {chatMessages.map((msg, idx) => (
-              <div key={idx} className="flex items-start space-x-2">
-                <img src={msg.avatar} alt={msg.sender} className="w-6 h-6 rounded-full" />
-                <div>
-                  <div className="text-sm font-semibold">{msg.sender}</div>
-                  <div className="text-sm">{msg.text}</div>
+            {chatMessages.map((msg, idx) => {
+              const isMine = msg.sender === currentUser?.name;
+              return (
+                <div
+                  key={idx}
+                  className={`flex ${isMine ? "justify-start" : "justify-end"}`}
+                >
+                  <div className={`max-w-[70%] flex items-start gap-2 ${isMine ? "" : "flex-row-reverse"}`}>
+                    <img
+                      src={msg.avatar}
+                      alt={msg.sender}
+                      className="w-6 h-6 rounded-full"
+                    />
+                    <div
+                      className={`text-sm px-3 py-2 rounded-lg shadow ${isMine ? "bg-gray-200 text-left" : "bg-blue-500 text-white text-right"
+                        }`}
+                    >
+                      <div className="font-semibold">{msg.sender}</div>
+                      <div>{msg.text}</div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* 發送輸入區 */}
@@ -288,15 +332,26 @@ const Home = () => {
               onChange={(e) => setChatInput(e.target.value)}
             />
             <button
-              onClick={() => {
-                if (!chatInput.trim()) return;
+              onClick={async () => {
+                if (!chatInput.trim() || !currentUser || !currentFloorObj?.label) return;
+
                 const newMessage = {
-                  sender: currentUser?.name ?? "Unknown",
-                  avatar: currentUser?.avatar ?? "",
+                  sender: currentUser.name,
+                  avatar: currentUser.avatar,
                   text: chatInput.trim(),
+                  timestamp: serverTimestamp(), // 🔐 Firebase 記錄時間
                 };
-                setChatMessages((prev) => [...prev, newMessage]);
-                setChatInput("");
+
+                try {
+                  await addDoc(
+                    collection(db, "ChatRooms", currentFloorObj.label, "messages"),
+                    newMessage
+                  );
+                  setChatInput(""); // 清除輸入框
+                } catch (err) {
+                  console.error("❌ 發送訊息失敗：", err);
+                  alert("訊息發送失敗，請稍後再試！");
+                }
               }}
               className="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
             >
@@ -306,13 +361,15 @@ const Home = () => {
         </div>
       )}
 
+      {/* 聊天室最小化 */}
       {isChatOpen && isMinimized && (
         <div
           onClick={() => setIsMinimized(false)}
-          className="fixed right-4 top-20 w-12 h-12 bg-blue-500 text-white flex items-center justify-center rounded-full shadow-lg cursor-pointer z-50"
-          title="Open Chat"
+          className="fixed right-4 top-20 px-4 h-12 bg-blue-500 text-white flex items-center justify-center rounded-full shadow-lg cursor-pointer z-50 text-xl space-x-2"
+          title={`${currentFloorObj?.label} Chat Room`}
         >
-          💬
+          <span>{getFloorEmoji(currentFloorObj?.label ?? "")}</span>
+          <span>💬</span>
         </div>
       )}
 
