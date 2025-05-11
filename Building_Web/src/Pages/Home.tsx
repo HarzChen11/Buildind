@@ -20,10 +20,12 @@ const Home = () => {
     const stored = sessionStorage.getItem("user");
     if (stored) {
       const parsed = JSON.parse(stored);
+      const floor = Number(parsed.floor);
+      const currentFloor = parsed.currentFloor !== undefined ? Number(parsed.currentFloor) : floor;
       return {
         ...parsed,
-        floor: Number(parsed.floor),
-        currentFloor: Number(parsed.currentFloor),
+        floor,
+        currentFloor,
       };
     }
     return null;
@@ -71,6 +73,27 @@ const Home = () => {
       setHasLoaded(true);
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const fetchUsers = () => {
+      fetch("http://localhost:8080/api/users")
+        .then((res) => res.json())
+        .then((onlineUsers: User[]) => {
+          setUsers(onlineUsers);
+        })
+        .catch((err) => {
+          console.error("輪詢使用者清單失敗", err);
+        });
+    };
+
+    fetchUsers(); // 立刻先抓一次
+    const interval = setInterval(fetchUsers, 10000); // 每 10 秒抓一次
+
+    return () => clearInterval(interval); // 離開頁面時清除定時器
+  }, [currentUser]);
+
 
   const handleMove = (targetFloor: number) => {
     if (!currentUser) return;
@@ -124,8 +147,21 @@ const Home = () => {
               key={floor.floorNumber}
               className="relative border-b border-black h-16 flex items-center justify-between px-4"
             >
-              <div className="w-1/5 text-lg font-bold">{floor.floorNumber}F</div>
-
+              <div className="w-1/5 flex items-center gap-3 text-lg font-bold">
+                {/* ✅ 只有非公共樓層 且 樓層編號 ≥ 100 才顯示燈泡 */}
+                {!floor.isPublicSpace && floor.floorNumber >= 100 && (
+                  <img
+                    src={
+                      users.some((u) => u.floor === floor.floorNumber && u.isOnline)
+                        ? "/assets/light-on.svg"
+                        : "/assets/light-off.svg"
+                    }
+                    alt="online status"
+                    className="w-5 h-5"
+                  />
+                )}
+                <span className="text-lg font-bold">{floor.floorNumber}F</span>
+              </div>
               <div className="flex-1 flex items-center justify-center space-x-2 text-lg">
                 <span>{floor.label || `${floor.floorNumber}F`}</span>
                 {users
@@ -153,13 +189,12 @@ const Home = () => {
 
                 {/* Back to Home 按鈕（只在自己專屬樓層出現，當前樓層不是 home 樓層時） */}
                 {currentUser &&
-                  floor.floorNumber === currentUser.floor &&
-                  currentUser.currentFloor !== currentUser.floor && (
+                  floor.floorNumber === currentUser.floor && (
                     <button
                       onClick={() => handleMove(currentUser.floor)}
                       className="text-sm px-3 py-1 border rounded bg-yellow-100 hover:bg-yellow-200"
                     >
-                      Back to Home
+                      {currentUser.currentFloor === currentUser.floor ? "You're Home 🏠" : "Back to Home"}
                     </button>
                   )}
               </div>
