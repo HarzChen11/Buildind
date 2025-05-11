@@ -16,6 +16,18 @@ const defaultFloors: Floor[] = [
   { floorNumber: 1, label: "OUTSIDE", isPublicSpace: true },
 ];
 
+const getFloorEmoji = (label: string) => {
+  switch (label) {
+    case "Gym": return "🏋️";
+    case "Cinema": return "🎬";
+    case "Cafe": return "☕";
+    case "Library": return "📚";
+    case "OUTSIDE": return "🌳";
+    default: return "🏢";
+  }
+};
+
+
 const Home = () => {
   // 使用者資料狀態
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -36,6 +48,12 @@ const Home = () => {
   const [floors, setFloors] = useState<Floor[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ sender: string; avatar: string; text: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [isMinimized, setIsMinimized] = useState(false);
+  const currentFloorObj = floors.find(f => f.floorNumber === currentUser?.currentFloor);
+
 
   // 取得樓層與使用者資料
   useEffect(() => {
@@ -139,7 +157,10 @@ const Home = () => {
   };
 
   return (
-    <div className="relative w-full flex flex-col items-center justify-center py-10 px-4">
+    <div
+      className={`relative w-full flex flex-col items-center py-28 px-4 transition-all duration-300 ${isChatOpen ? "md:ml-[-180px]" : ""
+        }`}
+    >
       {/* 使用者登入狀態提示或登入連結 */}
       <div className="fixed top-4 right-4 z-50">
         {currentUser ? (
@@ -201,7 +222,13 @@ const Home = () => {
                 {/* 公共樓層：可移動或打開聊天室 */}
                 {floor.isPublicSpace && currentUser && (
                   <button
-                    onClick={() => handleMove(floor.floorNumber)}
+                    onClick={() => {
+                      if (currentUser.currentFloor === floor.floorNumber) {
+                        setIsChatOpen(true); // ✅ 點擊時打開聊天室
+                      } else {
+                        handleMove(floor.floorNumber);
+                      }
+                    }}
                     className="text-sm px-3 py-1 border rounded bg-white hover:bg-gray-100"
                   >
                     {currentUser.currentFloor === floor.floorNumber
@@ -225,6 +252,69 @@ const Home = () => {
             </div>
           ))}
       </div>
+
+      {isChatOpen && !isMinimized && (
+        <div className="fixed right-4 top-20 w-[480px] h-[600px] bg-white border shadow-lg rounded-lg flex flex-col p-4 z-50">
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-lg font-bold">
+              {getFloorEmoji(currentFloorObj?.label ?? "")} {currentFloorObj?.label} Chat Room
+            </h2>
+            <div className="space-x-2">
+              <button onClick={() => setIsMinimized(true)} className="text-gray-500 hover:text-black">➖</button>
+              <button onClick={() => setIsChatOpen(false)} className="text-gray-500 hover:text-black">❌</button>
+            </div>
+          </div>
+
+          {/* 訊息列表 */}
+          <div className="flex-1 overflow-y-auto space-y-2 border p-2 rounded">
+            {chatMessages.map((msg, idx) => (
+              <div key={idx} className="flex items-start space-x-2">
+                <img src={msg.avatar} alt={msg.sender} className="w-6 h-6 rounded-full" />
+                <div>
+                  <div className="text-sm font-semibold">{msg.sender}</div>
+                  <div className="text-sm">{msg.text}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 發送輸入區 */}
+          <div className="mt-2 flex">
+            <input
+              type="text"
+              className="flex-1 border rounded px-2 py-1 text-sm"
+              placeholder="Type a message..."
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+            />
+            <button
+              onClick={() => {
+                if (!chatInput.trim()) return;
+                const newMessage = {
+                  sender: currentUser?.name ?? "Unknown",
+                  avatar: currentUser?.avatar ?? "",
+                  text: chatInput.trim(),
+                };
+                setChatMessages((prev) => [...prev, newMessage]);
+                setChatInput("");
+              }}
+              className="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isChatOpen && isMinimized && (
+        <div
+          onClick={() => setIsMinimized(false)}
+          className="fixed right-4 top-20 w-12 h-12 bg-blue-500 text-white flex items-center justify-center rounded-full shadow-lg cursor-pointer z-50"
+          title="Open Chat"
+        >
+          💬
+        </div>
+      )}
 
       {/* 建築裝飾元件 */}
       <BuildingDecoration />
