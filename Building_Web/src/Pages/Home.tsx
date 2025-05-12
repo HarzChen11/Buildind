@@ -2,15 +2,16 @@ import React, { useEffect, useState, useRef } from "react";
 import { User, Floor } from "../Types";
 import BuildingDecoration from "../Components/BuildingDecoration";
 import { db } from "../Firebase/Firebase";
-import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  onSnapshot,
+  query,
+  orderBy,
+} from "firebase/firestore";
 
-// ✅ 預設樓層資料
 const defaultFloors: Floor[] = [
-  // { floorNumber: 6, label: "--", isPublicSpace: false },
-  // { floorNumber: 7, label: "--", isPublicSpace: false },
-  // { floorNumber: 8, label: "--", isPublicSpace: false },
-  // { floorNumber: 9, label: "--", isPublicSpace: false },
-  // { floorNumber: 10, label: "--", isPublicSpace: false },
   { floorNumber: 5, label: "Gym", isPublicSpace: true },
   { floorNumber: 4, label: "Cinema", isPublicSpace: true },
   { floorNumber: 3, label: "Cafe", isPublicSpace: true },
@@ -51,7 +52,6 @@ const Home = () => {
   const [activePopoverFloor, setActivePopoverFloor] = useState<number | null>(null);
   const currentFloorObj = floors.find(f => f.floorNumber === currentUser?.currentFloor);
   const popoverRef = useRef<HTMLDivElement | null>(null);
-
 
   useEffect(() => {
     if (currentUser) {
@@ -110,13 +110,20 @@ const Home = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    if (!currentUser) return;
-    const handleUnload = () => {
-      navigator.sendBeacon("http://localhost:8080/api/logout", JSON.stringify({ userId: currentUser.id }));
-    };
-    window.addEventListener("beforeunload", handleUnload);
-    return () => window.removeEventListener("beforeunload", handleUnload);
-  }, [currentUser]);
+    const ping = setInterval(() => {
+      const sessionUser = sessionStorage.getItem("user");
+      if (!sessionUser) return;
+      const parsed = JSON.parse(sessionUser);
+      if (parsed?.id) {
+        fetch("http://localhost:8080/api/ping", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: parsed.id }),
+        });
+      }
+    }, 10000); // 每10秒回報
+    return () => clearInterval(ping);
+  }, []);
 
   useEffect(() => {
     if (!currentFloorObj?.label) return;
@@ -133,23 +140,15 @@ const Home = () => {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        popoverRef.current &&
-        !popoverRef.current.contains(event.target as Node)
-      ) {
-        setActivePopoverFloor(null); // 自動關閉
+      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+        setActivePopoverFloor(null);
       }
     };
-
     if (activePopoverFloor !== null) {
       document.addEventListener("mousedown", handleClickOutside);
     }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [activePopoverFloor]);
-
 
   const handleMove = (targetFloor: number) => {
     if (!currentUser) return;
@@ -171,7 +170,7 @@ const Home = () => {
   };
 
   return (
-    <div className="relative w-full flex flex-col items-center py-28 px-4 transition-all duration-300">
+    <div className={`relative w-full flex flex-col items-center py-28 px-4 transition-all duration-300 ${isChatOpen && !isMinimized ? "pr-[500px]" : ""}`}>
       <div className="fixed top-4 right-4 z-50">
         {currentUser ? (
           <div className="bg-gray-100 px-4 py-2 rounded text-gray-800 shadow">
@@ -194,7 +193,7 @@ const Home = () => {
               key={floor.floorNumber}
               className="relative border-b border-black h-16 flex items-center justify-between px-4"
             >
-              <div className="w-1/5 flex items-center gap-2 text-lg font-bold">
+              <div className="w-1/4 flex items-center gap-2">
                 {floor.isPublicSpace && (
                   <button
                     onClick={() => setActivePopoverFloor(activePopoverFloor === floor.floorNumber ? null : floor.floorNumber)}
@@ -213,10 +212,13 @@ const Home = () => {
                 <span className="text-lg font-bold">{floor.floorNumber}F</span>
               </div>
 
-              <div className="flex-1 flex items-center justify-center space-x-2 text-lg">
+              <div className="w-2/4 flex justify-center items-center gap-2 text-lg">
                 <span>{floor.label || `${floor.floorNumber}F`}</span>
                 {users
-                  .filter((u) => u.currentFloor === floor.floorNumber)
+                  .filter((u) =>
+                    u.currentFloor === floor.floorNumber &&
+                    (!floor.isPublicSpace || u.id === currentUser?.id)
+                  )
                   .map((u) => (
                     <img
                       key={u.id}
@@ -227,7 +229,7 @@ const Home = () => {
                   ))}
               </div>
 
-              <div className="flex space-x-2 items-center">
+              <div className="w-1/4 flex justify-end items-center gap-2">
                 {floor.isPublicSpace && currentUser && (
                   <button
                     onClick={() => {
@@ -239,7 +241,7 @@ const Home = () => {
                     }}
                     className="text-sm px-3 py-1 border rounded bg-white hover:bg-gray-100"
                   >
-                    {currentUser.currentFloor === floor.floorNumber ? "Open ChatBox 💬" : "Move to Here!"}
+                    {currentUser.currentFloor === floor.floorNumber ? "Open ChatBox 💬" : "Move Here!"}
                   </button>
                 )}
 
@@ -255,8 +257,8 @@ const Home = () => {
 
               {activePopoverFloor === floor.floorNumber && (
                 <div
-                  ref={popoverRef}  // ✅ 加上這一行
-                  className="absolute left-16 top-12 bg-white border shadow-lg p-2 rounded-lg z-50 w-40"
+                  ref={popoverRef}
+                  className="absolute left-[-180px] top-1/2 -translate-y-1/2 bg-white border shadow-lg p-2 rounded-lg z-50 w-40"
                 >
                   <div className="text-sm font-semibold mb-2">目前在線：</div>
                   <div className="flex flex-wrap gap-2">
